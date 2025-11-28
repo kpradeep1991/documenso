@@ -17,6 +17,7 @@ import { P, match } from 'ts-pattern';
 
 import { useLimits } from '@documenso/ee/server-only/limits/provider/client';
 import { useCopyToClipboard } from '@documenso/lib/client-only/hooks/use-copy-to-clipboard';
+import { useOptionalEnvelopeEditor } from '@documenso/lib/client-only/providers/envelope-editor-provider';
 import { useCurrentOrganisation } from '@documenso/lib/client-only/providers/organisation';
 import { DIRECT_TEMPLATE_RECIPIENT_EMAIL } from '@documenso/lib/constants/direct-templates';
 import { RECIPIENT_ROLES_DESCRIPTION } from '@documenso/lib/constants/recipient-roles';
@@ -54,7 +55,6 @@ type TemplateDirectLinkDialogProps = {
   directLink?: Pick<TemplateDirectLink, 'token' | 'enabled'> | null;
   recipients: Recipient[];
   trigger?: React.ReactNode;
-  onSuccess?: () => Promise<void> | void;
 };
 
 type TemplateDirectLinkStep = 'ONBOARD' | 'SELECT_RECIPIENT' | 'MANAGE' | 'CONFIRM_DELETE';
@@ -64,12 +64,16 @@ export const TemplateDirectLinkDialog = ({
   directLink,
   recipients,
   trigger,
-  onSuccess,
 }: TemplateDirectLinkDialogProps) => {
   const { toast } = useToast();
   const { quota, remaining } = useLimits();
   const { _ } = useLingui();
   const { revalidate } = useRevalidator();
+  const envelopeEditor = useOptionalEnvelopeEditor();
+  const revalidateTemplate = async () => {
+    await revalidate();
+    await envelopeEditor?.syncEnvelope();
+  };
 
   const [, copy] = useCopyToClipboard();
 
@@ -98,8 +102,7 @@ export const TemplateDirectLinkDialog = ({
     reset: resetCreateTemplateDirectLink,
   } = trpcReact.template.createTemplateDirectLink.useMutation({
     onSuccess: async (data) => {
-      await revalidate();
-      await onSuccess?.();
+      await revalidateTemplate();
 
       setToken(data.token);
       setIsEnabled(data.enabled);
@@ -119,8 +122,7 @@ export const TemplateDirectLinkDialog = ({
   const { mutateAsync: toggleTemplateDirectLink, isPending: isTogglingTemplateAccess } =
     trpcReact.template.toggleTemplateDirectLink.useMutation({
       onSuccess: async (data) => {
-        await revalidate();
-        await onSuccess?.();
+        await revalidateTemplate();
 
         const enabledDescription = msg`Direct link signing has been enabled`;
         const disabledDescription = msg`Direct link signing has been disabled`;
@@ -145,8 +147,7 @@ export const TemplateDirectLinkDialog = ({
   const { mutateAsync: deleteTemplateDirectLink, isPending: isDeletingTemplateDirectLink } =
     trpcReact.template.deleteTemplateDirectLink.useMutation({
       onSuccess: async () => {
-        await revalidate();
-        await onSuccess?.();
+        await revalidateTemplate();
 
         setOpen(false);
         setToken(null);
